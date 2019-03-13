@@ -1,64 +1,47 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Tue Mar 12 16:28:21 2019
-
-@author: Sarah
-"""
-
 import pickle
 import pandas as pd
-#Importing the Keras libraries and packages
+import tensorflow as tf
+
+
+dataset = open('train_images.pkl', 'rb')
+X_training = pickle.load(dataset)
+        
+#gets training y
+y_training = []
+y = []
+df = pd.read_csv("train_labels.csv")
+y_training = df.values.tolist()
+for arr in y_training:
+    element = arr[1]
+    y.append(element)
+    
+X_training.shape
+
+# Reshaping the array to 4-dims so that it can work with the Keras API
+X_training = X_training.reshape(X_training.shape[0], 64, 64, 1)
+input_shape = (64, 64, 1)
+# Making sure that the values are float so that we can get decimal points after division
+X_training = X_training.astype('float32')
+# Normalizing the RGB codes by dividing it to the max RGB value.
+X_training /= 255
+print('x_train shape:', X_training.shape)
+print('Number of images in x_train', X_training.shape[0])
+
+
+# Importing the required Keras modules containing model and layers
 from keras.models import Sequential
-from keras.layers import Convolution2D
-from keras.layers import MaxPooling2D
-from keras.layers import Flatten
-from keras.layers import Dense
-    
+from keras.layers import Dense, Conv2D, Dropout, Flatten, MaxPooling2D
+# Creating a Sequential Model and adding the layers
+model = Sequential()
+model.add(Conv2D(28, kernel_size=(3,3), input_shape=input_shape))
+model.add(MaxPooling2D(pool_size=(2, 2)))
+model.add(Flatten()) # Flattening the 2D arrays for fully connected layers
+model.add(Dense(128, activation=tf.nn.relu))
+model.add(Dropout(0.2))
+model.add(Dense(10,activation=tf.nn.softmax))
 
-class number_analysis:
-    def __init__(self):
-        #training folder must be in the same directory as this script
-        self.negative_folder = "./train/neg/"
-        self.positive_folder = "./train/pos/"
-    
-    def load_training_data(self):
-        
-        #gets training input
-        dataset = open('train_images.pkl', 'rb')
-        X_training = pickle.load(dataset)
-        
-        #gets training y
-        y_training = []
-        y = []
-        df = pd.read_csv("train_labels.csv")
-        y_training = df.values.tolist()
-        for arr in y_training:
-            element = arr[1]
-            y.append(element)
-        
-        return X_training, y
+model.compile(optimizer='adam', 
+              loss='sparse_categorical_crossentropy', 
+              metrics=['accuracy'])
 
-############################################################################################################
-
-    
-#Initialize the CNN
-classifier = Sequential()
-
-#Step 1 - Convolution
-classifier.add(Convolution2D(32, 3, 3, input_shape = (64, 64, 3), activation = 'relu'))
-
-#Step 2 - Pooling
-classifier.add(MaxPooling2D(pool_size = (2, 2)))
-
-#Step 3 - Flattening
-classifier.add(Flatten())
-
-#Step 4 - Full Connection
-classifier.add(Dense(output_dim = 128, activation = 'relu'))
-classifier.add(Dense(output_dim = 1, activation = 'sigmoid'))
-
-#Compiling the CNN
-classifier.compile(optimizer = 'adam', loss = 'binary_crossentropy', metrics = ['accuracy'])
-
-
-classifier.fit_generator(x_training, steps_per_epoch = 8000, epochs = 10, validation_data = y_train, validation_steps = 800)
+model.fit(x=X_training,y=y, epochs=10)
