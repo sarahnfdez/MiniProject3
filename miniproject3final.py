@@ -1,21 +1,20 @@
 # -*- coding: utf-8 -*-
 """
 Created on Wed Mar 13 18:13:53 2019
-
 @author: Sarah
 """
 
 from keras.models import Sequential
 from keras.layers import Dense, Conv2D, Dropout, Flatten, MaxPooling2D
-from keras.datasets import mnist
 import pickle
 import pandas as pd
 import tensorflow as tf
 import matplotlib as mpl
-import cv2
 import numpy as np
-
+from scipy import ndimage
+import matplotlib.pyplot as plt
 from sklearn.preprocessing import MinMaxScaler
+from PIL import Image 
 
 
 class CNN_analysis:
@@ -38,19 +37,15 @@ class CNN_analysis:
         return X_training, y
     
     def preprocess(self, X, y):
-        import numpy as np
-        from scipy import ndimage
-        import matplotlib.pyplot as plt
-        
         np.random.seed(3)
         X = x
         resized_x = np.zeros([40000, 40, 40])
         resized_y = np.zeros([40000])
         j = 0;
         i = 0;
-        for im in X[0:80]:
-            print(i)
-   
+        for im in X:
+         #   print(i)
+          #  im = X[1]
           #  print(i)
             n = 64
             l = 64
@@ -84,7 +79,7 @@ class CNN_analysis:
             largest_y_slice_y = slice(0, 0)
             largest_x_slice_x = slice(0, 0)
             largest_x_slice_y = slice(0, 0)
-            mpl.pyplot.imshow(label_im)
+#            mpl.pyplot.imshow(label_im)
             for label in labels:
                 
                 if label==0:
@@ -131,8 +126,12 @@ class CNN_analysis:
             try:
                 roi = np.pad(roi, [(int(y_pad_size_left), int(y_pad_size_right)), (int(x_pad_size_left), int(x_pad_size_right))], 'constant', constant_values=(0,0))
             except:
-                i+=1
-                continue
+                roi = roi.astype('uint8')
+                roi = Image.fromarray(roi)
+                roi = roi.resize((32,32))
+                roi = np.array(list(roi.getdata()))
+                roi = np.reshape(roi, [32,32])
+                roi = np.pad(roi, [(4,4), (4,4)], 'constant', constant_values=(0,0))
                 
             roi = np.reshape(roi, [1, 40, 40])
 
@@ -141,29 +140,30 @@ class CNN_analysis:
             resized_y[j] = y[i]
             i+=1
             j+=1
+         #   mpl.pyplot.imshow(resized_x[79])
         return resized_x, resized_y
 
         
 
     def run_CNN1(self, X_training, y):
        
-        X_training = X_training.reshape(X_training.shape[0], 28, 28, 1)
-        input_shape = (28, 28, 1)
+        X_training = X_training.reshape(X_training.shape[0], 40, 40, 1)
+        input_shape = (40, 40, 1)
         
         # Making sure that the values are float so that we can get decimal points after division
         X_training = X_training.astype('float32')
         
         # Normalizing the RGB codes by dividing it to the max RGB value.
-        X_training /= 255
+        #X_training /= 255
     
         # Creating a Sequential Model and adding the layers
         model = Sequential()
-        model.add(Conv2D(128, kernel_size=(3,3), input_shape=input_shape))
+        model.add(Conv2D(64, kernel_size=(3,3), input_shape=input_shape))
         model.add(MaxPooling2D(pool_size=(2, 2)))
-        model.add(Conv2D(32, kernel_size=(3,3)))
+        model.add(Conv2D(16, kernel_size=(3,3)))
         model.add(MaxPooling2D(pool_size=(2, 2)))
         model.add(Flatten()) # Flattening the 2D arrays for fully connected layers
-        model.add(Dense(128, activation=tf.nn.relu))
+        model.add(Dense(64, activation=tf.nn.relu))
         model.add(Dropout(0.2))
         model.add(Dense(10,activation=tf.nn.softmax))
 
@@ -171,7 +171,8 @@ class CNN_analysis:
               loss='sparse_categorical_crossentropy', 
               metrics=['accuracy'])
 
-        model.fit(x=X_training, y=y, epochs=10, validation_split = 0.2)
+        model.fit(x=X_training, y=y, epochs=2, validation_split = 0.2)
+        
         
 #####################################################################################################################
   
@@ -182,19 +183,25 @@ x, y = test1.load_training_data()
 
 x_train, y_train = CNN_analysis.preprocess(x, x, y)
 
-w=15
-h=15
-fig=mpl.pyplot.figure(figsize=(8, 8))
-columns = 5
-rows = 16
-for i in range(len(x_train)):
-    img = x_train[i]
-    fig.add_subplot(rows, columns, i+1)
-    mpl.pyplot.imshow(img)
-plt.show()
+
+
+#y_train = y_train[0:39109]
+#x_train = x_train[0:39109]
+
+#w=15
+#h=15
+#fig=mpl.pyplot.figure(figsize=(8, 8))
+#columns = 5
+#rows = 16
+#for i in range(len(x_train)):
+#    img = x_train[i]
+#    fig.add_subplot(rows, columns, i+1)
+#    mpl.pyplot.imshow(img)
+#plt.show()
 #scaler = StandardScaler()
 #show = x[17]
-mpl.pyplot.imshow(x[54])
-#test1.run_CNN1(x_train, y_train)
+#mpl.pyplot.imshow(x_train[39000])
+#x_train.shape[0]
+test1.run_CNN1(x_train, y_train)
 
 
