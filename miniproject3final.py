@@ -5,15 +5,17 @@ Created on Wed Mar 13 18:13:53 2019
 """
 
 from keras.models import Sequential
-from keras.layers import Dense, Conv2D, Dropout, Flatten, MaxPooling2D
+from keras.optimizers import Adam, SGD
+from keras.layers import Dense, Conv2D, Dropout, Flatten, MaxPooling2D, Activation, GlobalAveragePooling2D, SeparableConv2D
+from keras.layers.normalization import BatchNormalization
 import pickle
 import pandas as pd
 import tensorflow as tf
-import matplotlib as mpl
+#import matplotlib as mpl
 import numpy as np
 from scipy import ndimage
-import matplotlib.pyplot as plt
-from sklearn.preprocessing import MinMaxScaler
+#import matplotlib.pyplot as plt
+#from sklearn.preprocessing import MinMaxScaler
 from PIL import Image 
 
 
@@ -49,7 +51,7 @@ class CNN_analysis:
           #  print(i)
             n = 64
             l = 64
-            points = l*np.random.random((2, n**2))
+            #points = l*np.random.random((2, n**2))
             im = ndimage.gaussian_filter(im, sigma=l/(4.*n))
           
             mask = im > im.mean() + im.std()
@@ -59,7 +61,7 @@ class CNN_analysis:
             
             # Find the largest connected component
             sizes = ndimage.sum(mask, label_im, range(nb_labels + 1))
-            maximum = np.max(sizes)
+            #maximum = np.max(sizes)
             mask_size = sizes < 100
             remove_pixel = mask_size[label_im]
             label_im[remove_pixel] = 0
@@ -70,7 +72,7 @@ class CNN_analysis:
             
             
             # Now that we have only one connected component, extract it's bounding box
-            max_area=0
+            #max_area=0
             x_length = 0
             y_length = 0
             final_x_slice = slice(0, 0)
@@ -88,7 +90,7 @@ class CNN_analysis:
                 
                 x_slice = slice_x.stop - slice_x.start
                 y_slice = slice_y.stop - slice_y.start
-                area = x_slice*y_slice
+                #area = x_slice*y_slice
                 if (x_slice> x_length):
                     x_length = x_slice
                     largest_x_slice_x = slice_x
@@ -141,24 +143,23 @@ class CNN_analysis:
             i+=1
             j+=1
          #   mpl.pyplot.imshow(resized_x[79])
+         
+        resized_x = resized_x.reshape(resized_x.shape[0], 40, 40, 1)
+        resized_x = resized_x.astype('float32')
         return resized_x, resized_y
 
         
 
-    def run_CNN1(self, X_training, y):
-       
-        X_training = X_training.reshape(X_training.shape[0], 40, 40, 1)
+    def make_babyNet1(self):
+        
         input_shape = (40, 40, 1)
-        
-        # Making sure that the values are float so that we can get decimal points after division
-        X_training = X_training.astype('float32')
-        
-        # Normalizing the RGB codes by dividing it to the max RGB value.
+
         #X_training /= 255
     
         # Creating a Sequential Model and adding the layers
         model = Sequential()
         model.add(Conv2D(64, kernel_size=(3,3), input_shape=input_shape))
+        model.add(BatchNormalization())
         model.add(MaxPooling2D(pool_size=(2, 2)))
         model.add(Conv2D(16, kernel_size=(3,3)))
         model.add(MaxPooling2D(pool_size=(2, 2)))
@@ -171,7 +172,87 @@ class CNN_analysis:
               loss='sparse_categorical_crossentropy', 
               metrics=['accuracy'])
 
-        model.fit(x=X_training, y=y, epochs=2, validation_split = 0.2)
+        return model
+    
+    def make_babyNet2(self):
+        
+        model = Sequential()
+        input_shape = (40, 40, 1)
+        LEARN_RATE = 1.0e-4
+    
+        model.add(Conv2D(96, kernel_size=(3, 3), activation='relu', padding = 'same', input_shape=input_shape))    
+        model.add(Dropout(0.2))
+        model.add(BatchNormalization())
+        model.add(Conv2D(96, kernel_size=(3, 3), activation='relu', padding = 'same'))  
+        model.add(BatchNormalization())
+        model.add(Conv2D(96, kernel_size=(3, 3), activation='relu', padding = 'same', strides = 2))    
+        model.add(Dropout(0.5))
+        model.add(Flatten())
+        model.add(BatchNormalization())
+        model.add(Conv2D(192, kernel_size=(3, 3), activation='relu', padding = 'same'))    
+        model.add(Conv2D(192, kernel_size=(3, 3), activation='relu', padding = 'same'))
+        model.add(BatchNormalization())
+        model.add(Conv2D(192, kernel_size=(3, 3), activation='relu', padding = 'same', strides = 2))    
+        model.add(Dropout(0.5))    
+    
+        model.add(Conv2D(192, kernel_size=(3, 3), activation='relu', padding = 'same'))
+        model.add(BatchNormalization())
+        model.add(Conv2D(192, kernel_size=(1, 1), activation='relu', padding='valid'))
+        model.add(Conv2D(10, kernel_size=(1, 1), activation='relu', padding='valid'))
+        model.add(Dense(64, activation=tf.nn.relu))
+        model.add(Dense(10,activation=tf.nn.softmax))
+
+        model.add(GlobalAveragePooling2D())
+        
+        model.compile(loss='categorical_crossentropy', # Better loss function for neural networks
+              optimizer=Adam(lr=LEARN_RATE), # Adam optimizer with 1.0e-4 learning rate
+              metrics = ['accuracy']) # Metrics to be evaluated by the model
+        
+        return model
+        
+    def make_babyNet3(self):
+        
+        # instantiate model
+        model = Sequential()
+
+        # we can think of this chunk as the input layer
+        model.add(Dense(64, input_dim=14, init='uniform'))
+        model.add(Activation('tanh'))
+        model.add(BatchNormalization())
+        model.add(Dropout(0.5))
+
+        # we can think of this chunk as the hidden layer    
+        model.add(Dense(64, init='uniform'))
+        model.add(Activation('tanh'))
+        model.add(BatchNormalization())
+        model.add(Dropout(0.5))
+        
+        # we can think of this chunk as the output layer
+        model.add(Dense(2, init='uniform'))
+        model.add(Activation('softmax'))
+        model.add(BatchNormalization())
+        
+        # setting up the optimization of our weights 
+        sgd = SGD(lr=0.1, decay=1e-6, momentum=0.9, nesterov=True)
+        model.compile(loss='binary_crossentropy', optimizer=sgd)
+        
+        return model
+    
+    def make_babyNet4(self):
+        input_shape = (40, 40, 1)
+        model = Sequential()
+        model.add(Conv2D(64, kernel_size=(3,3), input_shape=input_shape))
+        model.add(Dense(64, activation=tf.nn.relu))
+        model.add(MaxPooling2D(pool_size=(2, 2)))
+        model.add(Conv2D(64, kernel_size=(3,3), input_shape=input_shape))
+        model.add(BatchNormalization())
+        model.add(MaxPooling2D(pool_size=(2, 2)))
+        model.add(Conv2D(64, kernel_size=(3,3), input_shape=input_shape))
+        model.add(Dense(10,activation=tf.nn.softmax))
+        model.add(BatchNormalization())
+        model.add(Dropout(0.2))
+
+        return model        
         
         
 #####################################################################################################################
@@ -202,6 +283,6 @@ x_train, y_train = CNN_analysis.preprocess(x, x, y)
 #show = x[17]
 #mpl.pyplot.imshow(x_train[39000])
 #x_train.shape[0]
-test1.run_CNN1(x_train, y_train)
-
+model1 = test1.make_babyNet1()
+model1.fit(x_train, y_train, epochs = 3,  validation_split=0.2)
 
