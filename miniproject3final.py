@@ -8,14 +8,18 @@ from keras.models import Sequential
 from keras.optimizers import Adam, SGD
 from keras.layers import Dense, Conv2D, Dropout, Flatten, MaxPooling2D, Activation, GlobalAveragePooling2D, SeparableConv2D
 from keras.layers.normalization import BatchNormalization
+from keras import layers
 import pickle
 import pandas as pd
+from scipy import stats
 import tensorflow as tf
+from keras.callbacks import ModelCheckpoint, EarlyStopping
 #import matplotlib as mpl
 import numpy as np
 from scipy import ndimage
-#import matplotlib.pyplot as plt
-#from sklearn.preprocessing import MinMaxScaler
+from random import random, seed
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
 from PIL import Image 
 
 
@@ -38,11 +42,26 @@ class CNN_analysis:
         
         return X_training, y
     
+    def load_test_data(self):
+        dataset = open('test_images.pkl', 'rb')
+        X_training = pickle.load(dataset)
+            
+        #gets training y
+        y_training = []
+        y = []
+        df = pd.read_csv("train_labels.csv")
+        y_training = df.values.tolist()
+        for arr in y_training:
+            element = arr[1]
+            y.append(element)
+        
+        return X_training, y
+        
+    
     def preprocess(self, X, y):
         np.random.seed(3)
-        X = x
-        resized_x = np.zeros([40000, 40, 40])
-        resized_y = np.zeros([40000])
+        resized_x = np.zeros([X.shape[0], 40, 40])
+        resized_y = np.zeros([X.shape[0]])
         j = 0;
         i = 0;
         for im in X:
@@ -159,7 +178,7 @@ class CNN_analysis:
         # Creating a Sequential Model and adding the layers
         model = Sequential()
         model.add(Conv2D(64, kernel_size=(3,3), input_shape=input_shape))
-        model.add(BatchNormalization())
+
         model.add(MaxPooling2D(pool_size=(2, 2)))
         model.add(Conv2D(16, kernel_size=(3,3)))
         model.add(MaxPooling2D(pool_size=(2, 2)))
@@ -254,6 +273,45 @@ class CNN_analysis:
 
         return model        
         
+    def make_LeNet(self):
+        input_shape = (40, 40, 1)
+        model = Sequential()
+
+        model.add(layers.Conv2D(filters=6, kernel_size=(3, 3), activation='relu', input_shape=input_shape))
+        model.add(layers.AveragePooling2D())
+        
+        model.add(layers.Conv2D(filters=16, kernel_size=(3, 3), activation='relu'))
+        model.add(layers.AveragePooling2D())
+        
+        model.add(layers.Flatten())
+        
+        model.add(layers.Dense(units=120, activation='relu'))
+        
+        model.add(layers.Dense(units=84, activation='relu'))
+        
+        model.add(layers.Dense(units=10, activation = 'softmax'))
+        
+                
+        model.compile(loss='sparse_categorical_crossentropy', # Better loss function for neural networks
+              optimizer=Adam(lr=0.1), # Adam optimizer with 1.0e-4 learning rate
+              metrics = ['accuracy']) 
+        
+        return model
+    
+    def sample(self, x_train, y_train, num_samples):
+        seed(1)
+        max_val = len(y_train)
+        
+        x = np.zeros([num_samples, 40, 40, 1])
+        y = np.zeros([num_samples])
+        counter = 0
+        for i in range(num_samples):
+            rand_num = random();
+            rand_index = int(np.floor(rand_num * max_val))
+            x[counter] = x_train[rand_index]
+            y[counter] = y_train[rand_index]
+            counter += 1
+        return x, y
         
 #####################################################################################################################
   
@@ -261,28 +319,56 @@ class CNN_analysis:
         
 test1= CNN_analysis()
 x, y = test1.load_training_data()
-
-x_train, y_train = CNN_analysis.preprocess(x, x, y)
-
+x_1, y_1 = test1.load_test_data()
 
 
-#y_train = y_train[0:39109]
-#x_train = x_train[0:39109]
+x_train, y_train = test1.preprocess(x, y)
+x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.2)
+x_test, y_test = CNN_analysis.preprocess(x_1, x_1, y_1)
 
-#w=15
-#h=15
-#fig=mpl.pyplot.figure(figsize=(8, 8))
-#columns = 5
-#rows = 16
-#for i in range(len(x_train)):
-#    img = x_train[i]
-#    fig.add_subplot(rows, columns, i+1)
-#    mpl.pyplot.imshow(img)
-#plt.show()
-#scaler = StandardScaler()
-#show = x[17]
-#mpl.pyplot.imshow(x_train[39000])
-#x_train.shape[0]
-model1 = test1.make_babyNet1()
-model1.fit(x_train, y_train, epochs = 3,  validation_split=0.2)
 
+model_list = []
+val_acc_list= []
+num_samples = 30000
+## do some bagging: subsample 40 tims.
+for i in range(15):
+    x_subsample, y_subsample = test1.sample(x_train, y_train, num_samples)
+    model = test1.make_babyNet1()
+    earlystopping = EarlyStopping(monitor='val_acc', patience=1)
+    callbacks_list = [earlystopping]
+    history = model.fit(x_subsample, y_subsample, epochs = 100,  validation_split=0.2, callbacks=callbacks_list)
+    model_list.append(model)
+    val_acc_list.append(history.history['val_acc'][-1])
+
+y_pred = np.zeros([y_test.shape[0], 0 ])
+for model in model_list:
+    pred = model.predict_classes(x_test)
+    pred = np.reshape(pred, [pred.shape[0], 1])
+    y_pred = np.append(y_pred, pred, axis=1)
+final_prediction = stats.mode(y_pred.T)
+final_prediction = final_prediction[0]
+
+from sklearn.metrics import accuracy_score
+acc = accuracy_score(y_val, final_prediction.T)
+
+
+new_mod = model_list[0]
+pred = new_mod.predict_classes(x_train)
+model = test1.make_babyNet1()
+checkpoint = ModelCheckpoint("checkpoint_model", monitor='val_acc', verbose=1, save_best_only=True, mode='max')
+earlystopping = EarlyStopping(monitor='val_acc', patience=3)
+callbacks_list = [checkpoint, earlystopping]
+
+
+model.fit(x_train, y_train, epochs = 100,  validation_split=0.2, callbacks=callbacks_list)
+
+
+y_pred = model.predict_classes(x_test)
+
+
+
+
+import pandas as pd
+y_pred = pd.DataFrame(final_prediction.T)
+y_pred.to_csv("bagging.csv")
+plt.imshow(x_test[1])
